@@ -1,16 +1,111 @@
-# React + Vite
+# TimeFlow
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+TimeFlow is a full-stack employee time-tracking MVP with role-based access, live attendance tracking, timesheets, leave management, schedules, holidays, team management, activity feed, and company settings.
 
-Currently, two official plugins are available:
+## Tech Stack
+- Frontend: React + Vite + React Router + Tailwind + Axios + Zustand + Recharts
+- Backend: Node.js + Express + Prisma ORM + Zod
+- Database: MySQL
+- Auth: JWT access token + refresh token rotation table
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Monorepo Structure
+```
+.
+├── backend/
+│   ├── prisma/
+│   └── src/
+└── frontend/
+    └── src/
+```
 
-## React Compiler
+## Prerequisites
+- Node.js 20+
+- npm 10+
+- MySQL 8+
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Setup
+1. Install dependencies:
+```bash
+npm install
+npm run install:all
+```
 
-## Expanding the ESLint configuration
+2. Configure env files:
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# IMPORTANT: update backend/.env DB_PASSWORD and DATABASE_URL
+```
+
+3. Create database (example):
+```sql
+CREATE DATABASE timeflow;
+```
+
+4. Run Prisma migration + generate client:
+```bash
+npm run prisma:generate -w backend
+npm run prisma:migrate -w backend -- --name init
+```
+
+5. Seed demo data:
+```bash
+npm run seed -w backend
+```
+
+## Run
+Backend:
+```bash
+npm run dev -w backend
+```
+Frontend:
+```bash
+npm run dev -w frontend
+```
+
+Or both from root:
+```bash
+npm run dev
+```
+
+## Lint
+```bash
+npm run lint
+```
+
+## Demo Credentials
+- Admin: `admin@timeflow.dev` / `Password123!`
+- Manager: `manager@timeflow.dev` / `Password123!`
+- Employee: `evan@timeflow.dev` / `Password123!`
+
+## Implemented Endpoints
+- Auth: register, login, refresh, logout, me profile
+- Dashboard summary for day/week/month
+- Time tracking (clock-in/out, break start/end, current)
+- Paginated timesheets with range filters
+- Time off types + request + status updates
+- Work schedule CRUD
+- Holiday CRUD
+- Team list/create/update
+- Activities feed
+- Settings load/update
+
+## Environment format
+```env
+PORT=5000
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=timeflow_db
+DB_USER=root
+DB_PASSWORD=REPLACE_WITH_REAL_PASSWORD
+JWT_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+JWT_REFRESH_SECRET=REPLACE_WITH_ANOTHER_LONG_RANDOM_SECRET
+DATABASE_URL=mysql://root:URL_ENCODED_PASSWORD@127.0.0.1:3306/timeflow_db
+```
+
+## Notes / TODOs
+- Add persistent frontend token storage strategy (e.g. secure httpOnly cookie flow)
+- Add stricter manager team-scoping rules (currently company-scoped for manager role)
+- Add richer table UX sorting/search/export
+- Add automated backend tests
