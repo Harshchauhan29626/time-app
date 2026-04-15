@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  manager
+  employee
+}
+
+enum TimeOffStatus {
+  pending
+  approved
+  rejected
+}
+
+model Company {
+  id                   String       @id @default(cuid())
+  name                 String
+  timezone             String       @default("UTC")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  users                User[]
+  holidays             Holiday[]
+  workSchedules        WorkSchedule[]
+  timeOffTypes         TimeOffType[]
+  settingsDefaultScheduleId String?
+}
+
+model User {
+  id            String   @id @default(cuid())
+  companyId     String
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          UserRole @default(employee)
+  timezone      String   @default("UTC")
+  avatarUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id])
+  timeEntries   TimeEntry[]
+  breaks        BreakEntry[]
+  timeOffRequests TimeOffRequest[]
+  activities    Activity[]
+  refreshTokens RefreshToken[]
+  scheduleAssignments UserWorkScheduleAssignment[]
+}
+
+model WorkSchedule {
+  id            String   @id @default(cuid())
+  companyId      String
+  name          String
+  startTime     String
+  endTime       String
+  breakMinutes  Int      @default(60)
+  weeklyHours   Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id])
+  days          WorkScheduleDay[]
+  assignments   UserWorkScheduleAssignment[]
+}
+
+model WorkScheduleDay {
+  id            String   @id @default(cuid())
+  workScheduleId String
+  weekday       Int
+  scheduledMinutes Int
+  workSchedule  WorkSchedule @relation(fields: [workScheduleId], references: [id], onDelete: Cascade)
+}
+
+model UserWorkScheduleAssignment {
+  id            String   @id @default(cuid())
+  userId        String
+  workScheduleId String
+  startsOn      DateTime @default(now())
+  endsOn        DateTime?
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workSchedule  WorkSchedule @relation(fields: [workScheduleId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id            String   @id @default(cuid())
+  companyId      String
+  userId        String
+  clockIn       DateTime
+  clockOut      DateTime?
+  workedMinutes Int      @default(0)
+  breakMinutes  Int      @default(0)
+  overtimeMinutes Int    @default(0)
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  breaks        BreakEntry[]
+
+  @@index([companyId, userId])
+}
+
+model BreakEntry {
+  id            String   @id @default(cuid())
+  timeEntryId   String
+  userId        String
+  startAt       DateTime
+  endAt         DateTime?
+  minutes       Int      @default(0)
+  timeEntry     TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TimeOffType {
+  id            String   @id @default(cuid())
+  companyId      String
+  name          String
+  description   String?
+  createdAt     DateTime @default(now())
+  company       Company  @relation(fields: [companyId], references: [id])
+  requests      TimeOffRequest[]
+}
+
+model TimeOffRequest {
+  id            String   @id @default(cuid())
+  companyId      String
+  userId        String
+  timeOffTypeId String
+  startDate     DateTime
+  endDate       DateTime
+  reason        String?
+  status        TimeOffStatus @default(pending)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeOffType   TimeOffType @relation(fields: [timeOffTypeId], references: [id])
+}
+
+model Holiday {
+  id            String   @id @default(cuid())
+  companyId      String
+  name          String
+  holidayDate   DateTime
+  type          String
+  createdAt     DateTime @default(now())
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+  id            String   @id @default(cuid())
+  companyId      String
+  userId        String
+  type          String
+  message       String
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+}
+
+model RefreshToken {
+  id            String   @id @default(cuid())
+  userId        String
+  token         String   @unique
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
