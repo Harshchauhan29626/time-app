@@ -13,12 +13,12 @@ const registerSchema = z.object({
   email: z.string().trim().email('Valid email is required').transform((val) => val.toLowerCase()),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   timezone: z.string().trim().min(2).default('UTC'),
-});
+}).strict();
 
 const loginSchema = z.object({
   email: z.string().trim().email('Valid email is required').transform((val) => val.toLowerCase()),
   password: z.string().min(1, 'Password is required'),
-});
+}).strict();
 
 router.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
@@ -36,32 +36,39 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(async (tx) => {
     const company = await tx.company.create({ data: { name: companyName, timezone } });
-    const user = await tx.user.create({
-      data: { companyId: company.id, name, email, passwordHash, role: 'admin', timezone },
+    return tx.user.create({
+      data: {
+        companyId: company.id,
+        name,
+        email,
+        passwordHash,
+        role: 'admin',
+        timezone,
+      },
       include: { company: true },
     });
-    return { company, user };
   });
 
-  const accessToken = signAccessToken(result.user);
-  const refresh = signRefreshToken(result.user);
+  const accessToken = signAccessToken(user);
+  const refresh = signRefreshToken(user);
 
   await prisma.refreshToken.create({
-    data: { userId: result.user.id, token: refresh.token, expiresAt: refresh.expiresAt },
+    data: { userId: user.id, token: refresh.token, expiresAt: refresh.expiresAt },
   });
 
   return res.status(201).json({
+    token: accessToken,
     accessToken,
     refreshToken: refresh.token,
     user: {
-      id: result.user.id,
-      name: result.user.name,
-      email: result.user.email,
-      role: result.user.role,
-      timezone: result.user.timezone,
-      company: result.user.company,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      timezone: user.timezone,
+      company: user.company,
     },
   });
 }));
@@ -93,6 +100,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   await prisma.refreshToken.create({ data: { userId: user.id, token: refresh.token, expiresAt: refresh.expiresAt } });
 
   return res.json({
+    token: accessToken,
     accessToken,
     refreshToken: refresh.token,
     user: {
@@ -122,7 +130,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
 
   const accessToken = signAccessToken(dbToken.user);
-  return res.json({ accessToken });
+  return res.json({ token: accessToken, accessToken });
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {

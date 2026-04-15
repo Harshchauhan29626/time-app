@@ -26,7 +26,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
     try {
-      await register(form);
+      await register({
+        companyName: form.companyName.trim(),
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        timezone: form.timezone.trim() || 'UTC',
+      });
       navigate('/dashboard');
     } catch (err) {
       setError(getApiError(err));
