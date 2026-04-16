@@ -19,14 +19,14 @@ async function main() {
   await prisma.company.deleteMany();
 
   const company = await prisma.company.create({ data: { name: 'TimeFlow Demo Co', timezone: 'America/New_York' } });
-  const passwordHash = await bcrypt.hash('Password123!', 10);
+  const password = await bcrypt.hash('Password123!', 10);
 
   const [admin, manager, e1, e2, e3] = await Promise.all([
-    prisma.user.create({ data: { companyId: company.id, name: 'Alice Admin', email: 'admin@timeflow.dev', role: 'admin', passwordHash, timezone: 'America/New_York' } }),
-    prisma.user.create({ data: { companyId: company.id, name: 'Mark Manager', email: 'manager@timeflow.dev', role: 'manager', passwordHash, timezone: 'America/New_York' } }),
-    prisma.user.create({ data: { companyId: company.id, name: 'Evan Employee', email: 'evan@timeflow.dev', role: 'employee', passwordHash, timezone: 'America/New_York' } }),
-    prisma.user.create({ data: { companyId: company.id, name: 'Nina Employee', email: 'nina@timeflow.dev', role: 'employee', passwordHash, timezone: 'America/New_York' } }),
-    prisma.user.create({ data: { companyId: company.id, name: 'Omar Employee', email: 'omar@timeflow.dev', role: 'employee', passwordHash, timezone: 'America/New_York' } }),
+    prisma.user.create({ data: { companyId: company.id, name: 'Alice Admin', email: 'admin@timeflow.dev', role: 'admin', password, timezone: 'America/New_York' } }),
+    prisma.user.create({ data: { companyId: company.id, name: 'Mark Manager', email: 'manager@timeflow.dev', role: 'manager', password, timezone: 'America/New_York' } }),
+    prisma.user.create({ data: { companyId: company.id, name: 'Evan Employee', email: 'evan@timeflow.dev', role: 'employee', password, timezone: 'America/New_York' } }),
+    prisma.user.create({ data: { companyId: company.id, name: 'Nina Employee', email: 'nina@timeflow.dev', role: 'employee', password, timezone: 'America/New_York' } }),
+    prisma.user.create({ data: { companyId: company.id, name: 'Omar Employee', email: 'omar@timeflow.dev', role: 'employee', password, timezone: 'America/New_York' } }),
   ]);
 
   const weekdaySchedule = await prisma.workSchedule.create({
