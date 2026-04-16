@@ -43,7 +43,7 @@ router.post('/register', asyncHandler(async (req, res) => {
         companyId: company.id,
         name,
         email,
-        passwordHash,
+        password: passwordHash,
         role: 'admin',
         timezone,
       },
@@ -91,7 +91,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
+  const ok = await bcrypt.compare(password, user.password);
   if (!ok) return res.status(401).json({ message: 'Invalid email or password.' });
 
   const accessToken = signAccessToken(user);
@@ -125,7 +125,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
 
   const dbToken = await prisma.refreshToken.findUnique({ where: { token }, include: { user: true } });
-  if (!dbToken || dbToken.revokedAt || dbToken.expiresAt < new Date()) {
+  if (!dbToken || dbToken.isRevoked || dbToken.expiresAt < new Date()) {
     return res.status(401).json({ message: 'Refresh token is invalid or expired.' });
   }
 
@@ -136,7 +136,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 router.post('/logout', asyncHandler(async (req, res) => {
   const token = req.body.refreshToken;
   if (token) {
-    await prisma.refreshToken.updateMany({ where: { token }, data: { revokedAt: new Date() } });
+    await prisma.refreshToken.updateMany({ where: { token }, data: { isRevoked: true } });
   }
   return res.json({ success: true });
 }));
