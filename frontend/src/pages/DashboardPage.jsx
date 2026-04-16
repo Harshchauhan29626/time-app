@@ -52,6 +52,7 @@ export default function DashboardPage() {
     try {
       await api.post(path);
       await loadDashboard();
+      window.dispatchEvent(new Event('timeflow:tracking-changed'));
     } catch (err) {
       setError(getErrorMessage(err, 'Action failed.'));
     } finally {
