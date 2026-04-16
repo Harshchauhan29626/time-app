@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
-import { minutesBetween } from '../utils/time.js';
+import { getRange, minutesBetween } from '../utils/time.js';
 import { logActivity } from '../services/activityService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -40,9 +40,29 @@ async function findActiveEntry(userId) {
   });
 }
 
+function calculateLiveEntryMinutes(entry, now = new Date()) {
+  const breaks = entry.breakEntries || [];
+  const breakMinutes = breaks.reduce((sum, item) => {
+    const breakEnd = item.breakEnd || now;
+    return sum + minutesBetween(item.breakStart, breakEnd);
+  }, 0);
+
+  const workedMinutes = Math.max(0, minutesBetween(entry.clockIn, now) - breakMinutes);
+
+  return { workedMinutes, breakMinutes };
+}
+
+function overlapsRange(entry, start, end, now = new Date()) {
+  const entryStart = new Date(entry.clockIn);
+  const entryEnd = entry.clockOut ? new Date(entry.clockOut) : now;
+  return entryStart <= end && entryEnd >= start;
+}
+
 router.post('/time/clock-in', asyncHandler(async (req, res) => {
   const active = await findActiveEntry(req.user.id);
   if (active) return res.status(400).json({ message: 'Active entry already exists' });
+  const timezone = req.user.timezone || req.user.companyTimezone || 'UTC';
+  const { start: dayStart } = getRange('day', timezone);
 
   const assignment = await prisma.userWorkScheduleAssignment.findFirst({
     where: {
@@ -58,7 +78,7 @@ router.post('/time/clock-in', asyncHandler(async (req, res) => {
       companyId: req.user.companyId,
       userId: req.user.id,
       workScheduleId: assignment?.workScheduleId || null,
-      entryDate: dayjs().startOf('day').toDate(),
+      entryDate: dayStart,
       clockIn: new Date(),
       status: 'active',
     },
@@ -162,13 +182,22 @@ router.get('/time-entries', asyncHandler(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ message: 'Invalid query' });
 
   const { page, pageSize, range, startDate, endDate } = parsed.data;
+  const timezone = req.user.timezone || req.user.companyTimezone || 'UTC';
   const where = { companyId: req.user.companyId };
   if (req.user.role === 'employee') where.userId = req.user.id;
 
-  if (range === 'today') where.entryDate = { gte: dayjs().startOf('day').toDate(), lte: dayjs().endOf('day').toDate() };
-  if (range === 'week') where.entryDate = { gte: dayjs().startOf('week').toDate(), lte: dayjs().endOf('week').toDate() };
-  if (range === 'month') where.entryDate = { gte: dayjs().startOf('month').toDate(), lte: dayjs().endOf('month').toDate() };
-  if (range === 'custom' && startDate && endDate) where.entryDate = { gte: new Date(startDate), lte: new Date(endDate) };
+  let selectedRange = null;
+  if (range === 'today') selectedRange = getRange('day', timezone);
+  if (range === 'week') selectedRange = getRange('week', timezone);
+  if (range === 'month') selectedRange = getRange('month', timezone);
+  if (range === 'custom' && startDate && endDate) selectedRange = { start: new Date(startDate), end: new Date(endDate) };
+
+  if (selectedRange) {
+    where.OR = [
+      { entryDate: { gte: selectedRange.start, lte: selectedRange.end } },
+      { clockOut: null, clockIn: { lte: selectedRange.end } },
+    ];
+  }
 
   const [total, rows] = await Promise.all([
     prisma.timeEntry.count({ where }),
@@ -177,12 +206,33 @@ router.get('/time-entries', asyncHandler(async (req, res) => {
       orderBy: { clockIn: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: { user: { select: { id: true, name: true, email: true } }, breakEntries: true },
     }),
   ]);
 
+  const now = new Date();
+  const transformedRows = rows
+    .filter((row) => {
+      if (!selectedRange) return true;
+      return overlapsRange(row, selectedRange.start, selectedRange.end, now);
+    })
+    .map((row) => {
+      const live = row.clockOut ? null : calculateLiveEntryMinutes(row, now);
+      return {
+        id: row.id,
+        date: row.entryDate,
+        clockIn: row.clockIn,
+        clockOut: row.clockOut,
+        workedMinutes: row.clockOut ? (row.totalWorkMinutes || 0) : live.workedMinutes,
+        breakMinutes: row.clockOut ? (row.totalBreakMinutes || 0) : live.breakMinutes,
+        overtimeMinutes: row.overtimeMinutes || 0,
+        status: row.clockOut ? (row.status || 'completed') : 'active',
+        user: row.user,
+      };
+    });
+
   res.json({
-    data: rows,
+    data: transformedRows,
     pagination: { total, page, pageSize, pages: Math.ceil(total / pageSize) || 1 },
   });
 }));
