@@ -8,13 +8,21 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { serializeBigInt } from './utils/serialize.js';
+import { env } from './config/env.js';
 
 const app = express();
 
+const allowedOrigins = env.clientOrigins;
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
     credentials: true,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS: Origin ${origin} is not allowed`));
+    },
   }),
 );
 

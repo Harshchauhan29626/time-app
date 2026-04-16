@@ -1,7 +1,20 @@
 import axios from 'axios';
 import { useAuthStore } from '../context/authStore';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const DEFAULT_API_URL = 'http://localhost:5000/api';
+
+function resolveApiUrl() {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+  if (!configured) return DEFAULT_API_URL;
+
+  if (configured.includes('localhost:5173') || configured.includes('localhost:5174')) {
+    return DEFAULT_API_URL;
+  }
+
+  return configured;
+}
+
+const BASE_URL = resolveApiUrl();
 
 function getTokenFromStorage() {
   try {
