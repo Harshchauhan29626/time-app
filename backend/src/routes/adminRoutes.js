@@ -60,26 +60,43 @@ router.get('/time-off-types', asyncHandler(async (req, res) => {
 
 router.post('/time-off-requests', asyncHandler(async (req, res) => {
   const schema = z.object({
-    timeOffTypeId: z.string(),
-    startDate: z.string(),
-    endDate: z.string(),
-    reason: z.string().optional(),
+    timeOffTypeId: z.coerce.number().int().positive(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    reason: z.string().trim().max(1000).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const timeOffTypeId = toBigIntSafe(parsed.data.timeOffTypeId);
   if (!timeOffTypeId) return res.status(400).json({ message: 'Invalid time off type' });
+  const startDate = new Date(`${parsed.data.startDate}T00:00:00.000Z`);
+  const endDate = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return res.status(400).json({ message: 'Invalid start or end date' });
+  }
+  if (endDate < startDate) return res.status(400).json({ message: 'End date cannot be before start date' });
+
+  const timeOffType = await prisma.timeOffType.findFirst({
+    where: { id: timeOffTypeId, companyId: req.user.companyId },
+  });
+  if (!timeOffType) return res.status(404).json({ message: 'Time off type not found' });
 
   const created = await prisma.timeOffRequest.create({
     data: {
       companyId: req.user.companyId,
       userId: req.user.id,
       timeOffTypeId,
-      startDate: new Date(parsed.data.startDate),
-      endDate: new Date(parsed.data.endDate),
+      startDate,
+      endDate,
       reason: parsed.data.reason || null,
+      status: 'pending',
+    },
+    include: {
+      timeOffType: { select: { id: true, name: true, color: true } },
+      user: { select: { id: true, name: true, email: true } },
     },
   });
 
