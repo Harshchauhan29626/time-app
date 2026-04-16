@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 
 import authRoutes from './routes/authRoutes.js';
+import meRoutes from './routes/meRoutes.js';
+import timeRoutes from './routes/timeRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -20,6 +24,10 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api', meRoutes);
+app.use('/api', timeRoutes);
+app.use('/api', dashboardRoutes);
+app.use('/api', adminRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });

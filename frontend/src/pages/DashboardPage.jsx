@@ -1,56 +1,122 @@
-import { useCallback, useEffect, useState } from 'react';
-import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import dayjs from 'dayjs';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import dayjs from 'dayjs';
+import PageHeader from '../components/ui/PageHeader';
+import StatCard from '../components/ui/StatCard';
+import EmptyState from '../components/ui/EmptyState';
+import ErrorState from '../components/ui/ErrorState';
+import LoadingSkeleton, { SkeletonBlock } from '../components/ui/LoadingSkeleton';
+import { getErrorMessage, minutesToCompact, minutesToHours } from '../utils/http';
 
 export default function DashboardPage() {
-  const [range, setRange] = useState('week');
-  const [data, setData] = useState(null);
-  const [currentEntry, setCurrentEntry] = useState(null);
   const { user } = useAuth();
+  const [range, setRange] = useState('week');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState('');
+  const [data, setData] = useState(null);
 
-  const load = useCallback(() => api.get(`/dashboard/summary?range=${range}`).then((res) => { setData(res.data); setCurrentEntry(res.data.currentActiveEntry); }), [range]);
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data: payload } = await api.get(`/dashboard/summary?range=${range}`);
+      setData(payload);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load dashboard summary.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [range]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  const act = async (path) => { await api.post(path); await load(); };
+  const currentEntry = data?.currentActiveEntry;
 
-  if (!data) return <p>Loading dashboard...</p>;
+  const cards = useMemo(() => ([
+    { label: 'Worked Hours', value: minutesToHours(data?.workedMinutes), hint: `(${minutesToCompact(data?.workedMinutes)})` },
+    { label: 'Break Time', value: minutesToHours(data?.breakMinutes), hint: `(${minutesToCompact(data?.breakMinutes)})` },
+    { label: 'Overtime', value: minutesToHours(data?.overtimeMinutes), hint: `(${minutesToCompact(data?.overtimeMinutes)})` },
+    { label: 'Current Status', value: currentEntry ? 'Clocked in' : 'Not tracking', hint: currentEntry ? `Since ${dayjs(currentEntry.clockIn).format('HH:mm')}` : 'Ready to start your day' },
+  ]), [currentEntry, data]);
 
-  const cards = [
-    { label: 'Worked Hours', value: (data.workedMinutes / 60).toFixed(2) },
-    { label: 'Break Hours', value: (data.breakMinutes / 60).toFixed(2) },
-    { label: 'Overtime Hours', value: (data.overtimeMinutes / 60).toFixed(2) },
-  ];
+  const action = async (path) => {
+    setActionLoading(path);
+    try {
+      await api.post(path);
+      await loadDashboard();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Action failed.'));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <SkeletonBlock className="h-20 w-full" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonBlock key={i} className="h-28" />)}</div>
+        <LoadingSkeleton rows={3} />
+      </div>
+    );
+  }
+
+  if (error && !data) return <ErrorState message={error} onRetry={loadDashboard} />;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Welcome back, {user?.name}</h2>
-        <div className="space-x-2">{['day', 'week', 'month'].map((r) => <button key={r} onClick={() => setRange(r)} className={`px-3 py-1 rounded ${range === r ? 'bg-accent text-white' : 'bg-white border'}`}>{r}</button>)}</div>
+      <PageHeader
+        title={`Welcome back, ${user?.name || 'Team member'}`}
+        description={`Workspace: ${user?.company?.name || 'Your company'}`}
+        actions={(
+          <div className="flex rounded-xl bg-white p-1 border border-slate-200 shadow-sm">
+            {['day', 'week', 'month'].map((option) => (
+              <button key={option} type="button" onClick={() => setRange(option)} className={`px-3 py-1 rounded-lg text-sm capitalize ${range === option ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+      />
+
+      {error ? <ErrorState title="Some actions failed" message={error} onRetry={loadDashboard} /> : null}
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{cards.map((c) => <StatCard key={c.label} {...c} />)}</div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+        <p className="font-medium">Quick Actions</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={!!currentEntry || actionLoading} onClick={() => action('/time/clock-in')} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Clock In</button>
+          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/clock-out')} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Clock Out</button>
+          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/break/start')} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Start Break</button>
+          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/break/end')} className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">End Break</button>
+          <a href="/time-off/new" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">Request Time Off</a>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl p-4 shadow-sm flex flex-wrap gap-2 items-center">
-        <p className="font-medium mr-2">Time Tracking:</p>
-        <button onClick={() => act('/time/clock-in')} className="bg-emerald-600 text-white px-3 py-1 rounded disabled:opacity-40" disabled={!!currentEntry}>Clock In</button>
-        <button onClick={() => act('/time/clock-out')} className="bg-rose-600 text-white px-3 py-1 rounded disabled:opacity-40" disabled={!currentEntry}>Clock Out</button>
-        <button onClick={() => act('/time/break/start')} className="bg-amber-500 text-white px-3 py-1 rounded disabled:opacity-40" disabled={!currentEntry}>Start Break</button>
-        <button onClick={() => act('/time/break/end')} className="bg-sky-600 text-white px-3 py-1 rounded disabled:opacity-40" disabled={!currentEntry}>End Break</button>
-        <span className="text-sm text-slate-500">{currentEntry ? `Active since ${dayjs(currentEntry.clockIn).format('HH:mm')}` : 'No active entry'}</span>
-      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="lg:col-span-2 rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
+          <h3 className="font-semibold">Timesheet Overview</h3>
+          {data?.chartData?.length ? (
+            <div className="h-64 mt-4"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.chartData}><XAxis dataKey="date" /><YAxis /><Tooltip /><Bar dataKey="hours" fill="#4f46e5" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
+          ) : (
+            <div className="mt-4"><EmptyState title="No tracked hours yet" message="Clock in to start generating your timesheet chart." /></div>
+          )}
+        </section>
 
-      <div className="grid md:grid-cols-3 gap-4">{cards.map((c) => <div key={c.label} className="bg-white p-5 rounded-xl shadow-sm"><p className="text-slate-500 text-sm">{c.label}</p><p className="text-2xl font-bold mt-2">{c.value}</p></div>)}</div>
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm">
-          <h3 className="font-semibold mb-3">Tracked hours trend</h3>
-          <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.chartData}><XAxis dataKey="date" /><YAxis /><Tooltip /><Bar dataKey="hours" fill="#4f46e5" /></BarChart></ResponsiveContainer></div>
-        </div>
-        <div className="bg-white p-5 rounded-xl shadow-sm space-y-4">
-          <div><h4 className="font-semibold">Upcoming Holidays</h4>{data.upcomingHolidays.map((h) => <p key={h.id} className="text-sm mt-1">{h.name} · {dayjs(h.holidayDate).format('MMM D')}</p>)}</div>
-          <div><h4 className="font-semibold">Approved Time Off</h4>{data.upcomingTimeOff.map((t) => <p key={t.id} className="text-sm mt-1">{t.user.name} · {dayjs(t.startDate).format('MMM D')}</p>)}</div>
-          <div><h4 className="font-semibold">Recent Activities</h4>{data.recentActivities.slice(0, 5).map((a) => <p key={a.id} className="text-sm mt-1">{a.message}</p>)}</div>
-        </div>
+        <section className="space-y-4">
+          <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+            <h4 className="font-semibold">Upcoming Holidays</h4>
+            {(data?.upcomingHolidays?.length ?? 0) > 0 ? data.upcomingHolidays.map((h) => <p key={h.id} className="text-sm mt-2 text-slate-600">{h.name} · {dayjs(h.holidayDate).format('MMM D, YYYY')}</p>) : <p className="text-sm mt-2 text-slate-500">No holidays configured.</p>}
+          </div>
+          <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+            <h4 className="font-semibold">Recent Activity</h4>
+            {(data?.recentActivities?.length ?? 0) > 0 ? data.recentActivities.slice(0, 5).map((a) => <p key={a.id} className="text-sm mt-2 text-slate-600">{a.message}</p>) : <p className="text-sm mt-2 text-slate-500">No activity yet.</p>}
+          </div>
+        </section>
       </div>
     </div>
   );
