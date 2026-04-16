@@ -167,12 +167,12 @@ router.post('/work-schedules', requireRole('admin', 'manager'), asyncHandler(asy
     name: z.string().min(1),
     startTime: z.string(),
     endTime: z.string(),
-    breakMinutes: z.coerce.number().default(60),
-    weeklyHours: z.coerce.number().default(40),
+    breakMinutes: z.coerce.number().min(0).default(60),
+    weeklyHours: z.coerce.number().min(0).default(40),
     days: z.array(z.object({ weekday: z.number(), scheduledMinutes: z.number() })).optional(),
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const row = await prisma.workSchedule.create({
     data: {
@@ -189,7 +189,7 @@ router.post('/work-schedules', requireRole('admin', 'manager'), asyncHandler(asy
     include: { workScheduleDays: true },
   });
 
-  res.status(201).json({ ...row, days: formatScheduleDays(row.workScheduleDays) });
+  res.status(201).json({ message: 'Schedule created successfully', data: { ...row, days: formatScheduleDays(row.workScheduleDays) } });
 }));
 
 router.patch('/work-schedules/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
@@ -228,13 +228,13 @@ router.get('/holidays', asyncHandler(async (req, res) => {
 
 router.post('/holidays', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
   const parsed = z.object({
-    name: z.string(),
-    holidayDate: z.string(),
+    name: z.string().trim().min(1),
+    holidayDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     type: z.enum(['public', 'company', 'optional']).default('public'),
-    description: z.string().optional(),
+    description: z.string().trim().max(500).optional(),
   }).safeParse(req.body);
 
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const row = await prisma.holiday.create({
     data: {
@@ -246,7 +246,7 @@ router.post('/holidays', requireRole('admin', 'manager'), asyncHandler(async (re
     },
   });
 
-  res.status(201).json(row);
+  res.status(201).json({ message: 'Holiday created successfully', data: row });
 }));
 
 router.patch('/holidays/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
@@ -281,15 +281,21 @@ router.get('/team', requireRole('admin', 'manager'), asyncHandler(async (req, re
 
 router.post('/team', requireRole('admin'), asyncHandler(async (req, res) => {
   const parsed = z.object({
-    name: z.string(),
+    name: z.string().trim().min(1),
     email: z.string().email(),
     password: z.string().min(8),
     role: z.enum(['manager', 'employee']),
     timezone: z.string().default('UTC'),
-    workScheduleId: z.string().optional(),
+    workScheduleId: z.union([z.string(), z.number(), z.null()]).optional(),
   }).safeParse(req.body);
 
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
+
+  const existing = await prisma.user.findFirst({
+    where: { email: parsed.data.email },
+    select: { id: true },
+  });
+  if (existing) return res.status(409).json({ message: 'Email already exists' });
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
@@ -304,20 +310,22 @@ router.post('/team', requireRole('admin'), asyncHandler(async (req, res) => {
     },
   });
 
-  if (parsed.data.workScheduleId) {
+  if (parsed.data.workScheduleId !== undefined && parsed.data.workScheduleId !== null && String(parsed.data.workScheduleId).trim() !== '') {
     const workScheduleId = toBigIntSafe(parsed.data.workScheduleId);
-    if (workScheduleId) {
-      await prisma.userWorkScheduleAssignment.create({
-        data: {
-          userId: user.id,
-          workScheduleId,
-          effectiveFrom: dayjs().startOf('day').toDate(),
-        },
-      });
-    }
+    if (!workScheduleId) return res.status(400).json({ message: 'Invalid work schedule' });
+    const schedule = await prisma.workSchedule.findFirst({ where: { id: workScheduleId, companyId: req.user.companyId }, select: { id: true } });
+    if (!schedule) return res.status(400).json({ message: 'Invalid work schedule' });
+
+    await prisma.userWorkScheduleAssignment.create({
+      data: {
+        userId: user.id,
+        workScheduleId,
+        effectiveFrom: dayjs().startOf('day').toDate(),
+      },
+    });
   }
 
-  res.status(201).json(user);
+  res.status(201).json({ message: 'Team member created successfully', data: user });
 }));
 
 router.patch('/team/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {

@@ -8,11 +8,20 @@ import { getErrorMessage } from '../utils/http';
 
 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const initialForm = {
+  name: '',
+  startTime: '09:00',
+  endTime: '17:00',
+  breakMinutes: 60,
+  weeklyHours: 40,
+};
+
 export default function WorkSchedulesPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '' });
+  const [success, setSuccess] = useState('');
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
 
   const loadSchedules = useCallback(async () => {
@@ -32,12 +41,30 @@ export default function WorkSchedulesPage() {
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) {
+      setError('Schedule name is required.');
+      return;
+    }
+    if (!form.startTime || !form.endTime) {
+      setError('Start time and end time are required.');
+      return;
+    }
+
     setSaving(true);
     setError('');
+    setSuccess('');
     try {
-      await api.post('/work-schedules', { name: form.name.trim(), startTime: '09:00', endTime: '17:00', breakMinutes: 60, weeklyHours: 40, days: [1, 2, 3, 4, 5].map((d) => ({ weekday: d, scheduledMinutes: 480 })) });
-      setForm({ name: '' });
+      const payload = {
+        name: form.name.trim(),
+        startTime: form.startTime,
+        endTime: form.endTime,
+        breakMinutes: Number(form.breakMinutes),
+        weeklyHours: Number(form.weeklyHours),
+        days: [1, 2, 3, 4, 5].map((d) => ({ weekday: d, scheduledMinutes: 480 })),
+      };
+      const { data } = await api.post('/work-schedules', payload);
+      setSuccess(data?.message || 'Schedule created successfully');
+      setForm(initialForm);
       await loadSchedules();
     } catch (err) {
       setError(getErrorMessage(err, 'Unable to create schedule.'));
@@ -56,18 +83,22 @@ export default function WorkSchedulesPage() {
       <PageHeader
         title="Work Schedules"
         description="Manage weekly schedules for your team."
-        actions={(
-          <form className="flex items-center gap-2" onSubmit={submit}>
-            <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Schedule name" value={form.name} onChange={(e) => setForm({ name: e.target.value })} />
-            <button type="submit" disabled={saving} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">Add Schedule</button>
-          </form>
-        )}
       />
 
+      <form className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100 grid gap-3 md:grid-cols-5" onSubmit={submit}>
+        <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Schedule name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
+        <input type="time" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.startTime} onChange={(e) => setForm((prev) => ({ ...prev, startTime: e.target.value }))} />
+        <input type="time" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.endTime} onChange={(e) => setForm((prev) => ({ ...prev, endTime: e.target.value }))} />
+        <input type="number" min="0" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Break minutes" value={form.breakMinutes} onChange={(e) => setForm((prev) => ({ ...prev, breakMinutes: e.target.value }))} />
+        <input type="number" min="0" step="0.5" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Weekly hours" value={form.weeklyHours} onChange={(e) => setForm((prev) => ({ ...prev, weeklyHours: e.target.value }))} />
+        <button type="submit" disabled={saving} className="md:col-span-5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Creating...' : 'Add Schedule'}</button>
+      </form>
+
       {error ? <ErrorState message={error} onRetry={loadSchedules} /> : null}
+      {success ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div> : null}
       {loading ? <LoadingSkeleton rows={4} /> : null}
 
-      {!loading && mapped.length === 0 ? <EmptyState title="No schedules available" message="Create your first work schedule to assign it to team members." /> : null}
+      {!loading && !error && mapped.length === 0 ? <EmptyState title="No schedules available" message="Create your first work schedule to assign it to team members." /> : null}
 
       {!loading && mapped.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
