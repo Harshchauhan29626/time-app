@@ -43,6 +43,9 @@ router.get('/dashboard/summary', asyncHandler(async (req, res) => {
     overtimeMinutes: acc.overtimeMinutes + (entry.overtimeMinutes || 0),
   }), { workedMinutes: 0, breakMinutes: 0, overtimeMinutes: 0 });
 
+
+  const activeBreak = currentActiveEntry?.breakEntries?.find((item) => !item.breakEnd) || null;
+
   const chartMap = {};
   entries.forEach((entry) => {
     const key = dayjs(entry.entryDate).format('YYYY-MM-DD');
@@ -52,6 +55,8 @@ router.get('/dashboard/summary', asyncHandler(async (req, res) => {
   res.json({
     ...totals,
     currentActiveEntry,
+    isTracking: Boolean(currentActiveEntry),
+    isOnBreak: Boolean(activeBreak),
     upcomingHolidays,
     upcomingTimeOff,
     recentActivities: recentActivities.map((activity) => ({

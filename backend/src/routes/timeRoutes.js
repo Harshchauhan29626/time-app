@@ -140,7 +140,14 @@ router.post('/time/break/end', asyncHandler(async (req, res) => {
 
 router.get('/time/current', asyncHandler(async (req, res) => {
   const entry = await findActiveEntry(req.user.id);
-  res.json(entry);
+  const activeBreak = entry?.breakEntries?.find((item) => !item.breakEnd) || null;
+
+  res.json({
+    currentActiveEntry: entry,
+    isTracking: Boolean(entry),
+    isOnBreak: Boolean(activeBreak),
+    activeBreak,
+  });
 }));
 
 router.get('/time-entries', asyncHandler(async (req, res) => {

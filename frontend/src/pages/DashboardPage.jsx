@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import api from '../api/client';
@@ -34,13 +35,17 @@ export default function DashboardPage() {
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const currentEntry = data?.currentActiveEntry;
+  const breaks = currentEntry?.breakEntries || currentEntry?.breaks || [];
+  const activeBreak = breaks.find((item) => !(item.breakEnd || item.endAt));
+  const isTracking = Boolean(currentEntry);
+  const isOnBreak = Boolean(activeBreak);
 
   const cards = useMemo(() => ([
     { label: 'Worked Hours', value: minutesToHours(data?.workedMinutes), hint: `(${minutesToCompact(data?.workedMinutes)})` },
     { label: 'Break Time', value: minutesToHours(data?.breakMinutes), hint: `(${minutesToCompact(data?.breakMinutes)})` },
     { label: 'Overtime', value: minutesToHours(data?.overtimeMinutes), hint: `(${minutesToCompact(data?.overtimeMinutes)})` },
-    { label: 'Current Status', value: currentEntry ? 'Clocked in' : 'Not tracking', hint: currentEntry ? `Since ${dayjs(currentEntry.clockIn).format('HH:mm')}` : 'Ready to start your day' },
-  ]), [currentEntry, data]);
+    { label: 'Current Status', value: isTracking ? (isOnBreak ? 'On break' : 'Clocked in') : 'Not tracking', hint: isTracking ? `Since ${dayjs(currentEntry.clockIn).format('HH:mm')}` : 'Ready to start your day' },
+  ]), [currentEntry, data, isOnBreak, isTracking]);
 
   const action = async (path) => {
     setActionLoading(path);
@@ -89,11 +94,29 @@ export default function DashboardPage() {
       <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
         <p className="font-medium">Quick Actions</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" disabled={!!currentEntry || actionLoading} onClick={() => action('/time/clock-in')} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Clock In</button>
-          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/clock-out')} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Clock Out</button>
-          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/break/start')} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Start Break</button>
-          <button type="button" disabled={!currentEntry || actionLoading} onClick={() => action('/time/break/end')} className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">End Break</button>
-          <a href="/time-off/new" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">Request Time Off</a>
+          {!isTracking ? (
+            <button type="button" disabled={Boolean(actionLoading)} onClick={() => action('/time/clock-in')} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {actionLoading === '/time/clock-in' ? 'Clocking In...' : 'Clock In'}
+            </button>
+          ) : (
+            <>
+              <button type="button" disabled={Boolean(actionLoading)} onClick={() => action('/time/clock-out')} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                {actionLoading === '/time/clock-out' ? 'Clocking Out...' : 'Clock Out'}
+              </button>
+
+              {!isOnBreak ? (
+                <button type="button" disabled={Boolean(actionLoading)} onClick={() => action('/time/break/start')} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  {actionLoading === '/time/break/start' ? 'Starting Break...' : 'Start Break'}
+                </button>
+              ) : (
+                <button type="button" disabled={Boolean(actionLoading)} onClick={() => action('/time/break/end')} className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  {actionLoading === '/time/break/end' ? 'Ending Break...' : 'End Break'}
+                </button>
+              )}
+            </>
+          )}
+
+          <Link to="/time-off/new" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">Request Time Off</Link>
         </div>
       </div>
 
