@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  name      String    @db.VarChar(150)
+  logo      String?   @db.VarChar(255)
+  timezone  String    @default("Asia/Kolkata") @db.VarChar(100)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  activities      Activity[]
+  holidays        Holiday[]
+  timeEntries     TimeEntry[]
+  timeOffRequests TimeOffRequest[]
+  timeOffTypes    TimeOffType[]
+  users           User[]
+  workSchedules   WorkSchedule[]
+
+  @@map("companies")
+}
+
+model User {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
+  name         String    @db.VarChar(100)
+  email        String    @unique @db.VarChar(150)
+  password     String    @db.VarChar(255)
+  role         String    @default("employee")
+  employeeCode String?   @unique @map("employee_code") @db.VarChar(50)
+  timezone     String    @default("Asia/Kolkata") @db.VarChar(100)
+  avatar       String?   @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  company             Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  activities          Activity[]
+  refreshTokens       RefreshToken[]
+  timeEntries         TimeEntry[]
+  scheduleAssignments UserWorkScheduleAssignment[]
+  requestedTimeOff    TimeOffRequest[]             @relation("RequestUser")
+  approvedTimeOff     TimeOffRequest[]             @relation("ApprovedByUser")
+
+  @@index([companyId], map: "idx_users_company_id")
+  @@map("users")
+}
+
+model Activity {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId       BigInt    @map("user_id") @db.UnsignedBigInt
+  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
+  type         String    @db.VarChar(50)
+  title        String    @db.VarChar(150)
+  description  String?   @db.Text
+  activityTime DateTime  @default(now()) @map("activity_time") @db.DateTime(0)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_activities_company")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_activities_user")
+
+  @@index([companyId], map: "idx_activities_company_id")
+  @@index([activityTime], map: "idx_activities_time")
+  @@index([userId], map: "idx_activities_user_id")
+  @@map("activities")
+}
+
+model BreakEntry {
+  id           BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  timeEntryId  BigInt           @map("time_entry_id") @db.UnsignedBigInt
+  breakStart   DateTime         @map("break_start") @db.DateTime(0)
+  breakEnd     DateTime?        @map("break_end") @db.DateTime(0)
+  totalMinutes Int              @default(0) @map("total_minutes")
+  status       BreakEntryStatus @default(active)
+  createdAt    DateTime?        @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime?        @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  timeEntry TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade, map: "fk_break_entries_time_entry")
+
+  @@index([timeEntryId], map: "idx_break_entries_time_entry_id")
+  @@map("break_entries")
+}
+
+model Holiday {
+  id          BigInt      @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId   BigInt      @map("company_id") @db.UnsignedBigInt
+  name        String      @db.VarChar(150)
+  holidayDate DateTime    @map("holiday_date") @db.Date
+  type        HolidayType @default(public)
+  description String?     @db.Text
+  createdAt   DateTime?   @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime?   @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_holidays_company")
+
+  @@index([companyId], map: "idx_holidays_company_id")
+  @@index([holidayDate], map: "idx_holidays_date")
+  @@map("holidays")
+}
+
+model RefreshToken {
+  id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    BigInt    @map("user_id") @db.UnsignedBigInt
+  token     String    @unique(map: "uq_refresh_token") @db.VarChar(500)
+  expiresAt DateTime  @map("expires_at") @db.DateTime(0)
+  isRevoked Boolean   @default(false) @map("is_revoked")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_refresh_tokens_user")
+
+  @@index([userId], map: "idx_refresh_user_id")
+  @@map("refresh_tokens")
+}
+
+model TimeEntry {
+  id                BigInt          @id @default(autoincrement()) @db.UnsignedBigInt
+  userId            BigInt          @map("user_id") @db.UnsignedBigInt
+  companyId         BigInt          @map("company_id") @db.UnsignedBigInt
+  workScheduleId    BigInt?         @map("work_schedule_id") @db.UnsignedBigInt
+  entryDate         DateTime        @map("entry_date") @db.Date
+  clockIn           DateTime        @map("clock_in") @db.DateTime(0)
+  clockOut          DateTime?       @map("clock_out") @db.DateTime(0)
+  totalWorkMinutes  Int             @default(0) @map("total_work_minutes")
+  totalBreakMinutes Int             @default(0) @map("total_break_minutes")
+  overtimeMinutes   Int             @default(0) @map("overtime_minutes")
+  status            TimeEntryStatus @default(active)
+  notes             String?         @db.Text
+  createdAt         DateTime?       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt         DateTime?       @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  breakEntries BreakEntry[]
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_time_entries_company")
+  workSchedule WorkSchedule? @relation(fields: [workScheduleId], references: [id], map: "fk_time_entries_schedule")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_time_entries_user")
+
+  @@index([workScheduleId], map: "fk_time_entries_schedule")
+  @@index([companyId], map: "idx_time_entries_company_id")
+  @@index([entryDate], map: "idx_time_entries_date")
+  @@index([userId], map: "idx_time_entries_user_id")
+  @@map("time_entries")
+}
+
+model TimeOffRequest {
+  id            BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
+  userId        BigInt               @map("user_id") @db.UnsignedBigInt
+  companyId     BigInt               @map("company_id") @db.UnsignedBigInt
+  timeOffTypeId BigInt               @map("time_off_type_id") @db.UnsignedBigInt
+  startDate     DateTime             @map("start_date") @db.Date
+  endDate       DateTime             @map("end_date") @db.Date
+  reason        String?              @db.Text
+  status        TimeOffRequestStatus @default(pending)
+  approvedBy    BigInt?              @map("approved_by") @db.UnsignedBigInt
+  approvedAt    DateTime?            @map("approved_at") @db.DateTime(0)
+  createdAt     DateTime?            @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime?            @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  approvedByUser User?       @relation("ApprovedByUser", fields: [approvedBy], references: [id], map: "fk_time_off_requests_approved_by")
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_time_off_requests_company")
+  timeOffType    TimeOffType @relation(fields: [timeOffTypeId], references: [id], onDelete: Cascade, map: "fk_time_off_requests_type")
+  user           User        @relation("RequestUser", fields: [userId], references: [id], onDelete: Cascade, map: "fk_time_off_requests_user")
+
+  @@index([approvedBy], map: "fk_time_off_requests_approved_by")
+  @@index([companyId], map: "idx_time_off_requests_company_id")
+  @@index([timeOffTypeId], map: "idx_time_off_requests_type_id")
+  @@index([userId], map: "idx_time_off_requests_user_id")
+  @@map("time_off_requests")
+}
+
+model TimeOffType {
+  id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId BigInt    @map("company_id") @db.UnsignedBigInt
+  name      String    @db.VarChar(100)
+  color     String    @default("#4f46e5") @db.VarChar(20)
+  isPaid    Boolean   @default(true) @map("is_paid")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  timeOffRequests TimeOffRequest[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_time_off_types_company")
+
+  @@index([companyId], map: "idx_time_off_types_company_id")
+  @@map("time_off_types")
+}
+
+model UserWorkScheduleAssignment {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId         BigInt    @map("user_id") @db.UnsignedBigInt
+  workScheduleId BigInt    @map("work_schedule_id") @db.UnsignedBigInt
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  workSchedule WorkSchedule @relation(fields: [workScheduleId], references: [id], onDelete: Cascade, map: "fk_schedule_assignments_schedule")
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_schedule_assignments_user")
+
+  @@index([workScheduleId], map: "idx_schedule_assign_schedule_id")
+  @@index([userId], map: "idx_schedule_assign_user_id")
+  @@map("user_work_schedule_assignments")
+}
+
+model WorkScheduleDay {
+  id             BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  workScheduleId BigInt              @map("work_schedule_id") @db.UnsignedBigInt
+  dayName        WorkScheduleDayName @map("day_name")
+  isWorking      Boolean             @default(true) @map("is_working")
+  startTime      DateTime?           @map("start_time") @db.Time(0)
+  endTime        DateTime?           @map("end_time") @db.Time(0)
+  createdAt      DateTime?           @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime?           @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  workSchedule WorkSchedule @relation(fields: [workScheduleId], references: [id], onDelete: Cascade, map: "fk_work_schedule_days_schedule")
+
+  @@unique([workScheduleId, dayName], map: "uq_schedule_day")
+  @@map("work_schedule_days")
+}
+
+model WorkSchedule {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
+  name         String    @db.VarChar(100)
+  startTime    DateTime  @map("start_time") @db.Time(0)
+  endTime      DateTime  @map("end_time") @db.Time(0)
+  breakMinutes Int       @default(60) @map("break_minutes")
+  weeklyHours  Decimal   @default(40.00) @map("weekly_hours") @db.Decimal(5, 2)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(0)
+
+  timeEntries      TimeEntry[]
+  assignments      UserWorkScheduleAssignment[]
+  workScheduleDays WorkScheduleDay[]
+  company          Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_work_schedules_company")
+
+  @@index([companyId], map: "idx_work_schedules_company_id")
+  @@map("work_schedules")
+}
+
+enum WorkScheduleDayName {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum HolidayType {
+  public
+  company
+  optional
+}
+
+enum BreakEntryStatus {
+  active
+  completed
+}
+
+enum TimeOffRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum TimeEntryStatus {
+  active
+  completed
+  cancelled
+}
