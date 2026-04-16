@@ -1,10 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/client';
 import dayjs from 'dayjs';
+import api from '../api/client';
+import PageHeader from '../components/ui/PageHeader';
+import ErrorState from '../components/ui/ErrorState';
+import EmptyState from '../components/ui/EmptyState';
+import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import { getErrorMessage } from '../utils/http';
 
 export default function TimeOffPage() {
   const [rows, setRows] = useState([]);
-  useEffect(() => { api.get('/time-off-requests').then((res) => setRows(res.data)); }, []);
-  return <div className="bg-white p-5 rounded-xl shadow-sm"><div className="flex justify-between"><h2 className="text-xl font-semibold">Time Off Requests</h2><Link to="/time-off/new" className="bg-accent text-white px-3 py-2 rounded">Request Leave</Link></div><div className="mt-4 space-y-2">{rows.map((r)=><div key={r.id} className="border rounded p-3 text-sm">{r.user.name} · {r.timeOffType.name} · {dayjs(r.startDate).format('MMM D')} - {dayjs(r.endDate).format('MMM D')} · <span className="capitalize">{r.status}</span></div>)}</div></div>;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadRequests = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.get('/time-off-requests');
+      setRows(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to load time off requests.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Time Off" description="Track leave requests and statuses." actions={<Link to="/time-off/new" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">Request Time Off</Link>} />
+      {error ? <ErrorState message={error} onRetry={loadRequests} /> : null}
+      {loading ? <LoadingSkeleton rows={4} /> : null}
+      {!loading && rows.length === 0 ? <EmptyState title="No requests found" message="Create a request to get started." /> : null}
+      {!loading && rows.length > 0 ? (
+        <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100 space-y-2">
+          {rows.map((r) => (
+            <div key={r.id} className="rounded-xl border border-slate-100 p-3 text-sm">
+              <p className="font-medium text-slate-800">{r.timeOffType?.name || 'Leave'} · <span className="capitalize">{r.status}</span></p>
+              <p className="text-slate-500 mt-1">{dayjs(r.startDate).format('MMM D')} - {dayjs(r.endDate).format('MMM D, YYYY')}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }

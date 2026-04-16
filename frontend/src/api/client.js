@@ -1,18 +1,42 @@
 import axios from 'axios';
 import { useAuthStore } from '../context/authStore';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const DEFAULT_API_URL = 'http://localhost:5000/api';
+
+function resolveApiUrl() {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+  if (!configured) return DEFAULT_API_URL;
+
+  if (configured.includes('localhost:5173') || configured.includes('localhost:5174')) {
+    return DEFAULT_API_URL;
+  }
+
+  return configured;
+}
+
+const BASE_URL = resolveApiUrl();
+
+function getTokenFromStorage() {
+  try {
+    const raw = localStorage.getItem('timeflow-auth');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.state?.accessToken || null;
+  } catch {
+    return null;
+  }
+}
 
 const api = axios.create({ baseURL: BASE_URL });
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
+  const token = useAuthStore.getState().accessToken || getTokenFromStorage();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 api.interceptors.response.use(
-  (r) => r,
+  (response) => response,
   async (error) => {
     const original = error.config;
 

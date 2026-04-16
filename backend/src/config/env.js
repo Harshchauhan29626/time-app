@@ -22,9 +22,22 @@ if (missing.length > 0) {
   throw new Error(`Missing env values: ${missing.join(', ')}`);
 }
 
+function parseClientOrigins() {
+  const defaults = ['http://localhost:5173', 'http://localhost:5174'];
+  const fromList = process.env.CLIENT_URLS
+    ?.split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const fromSingle = process.env.CLIENT_URL?.trim() ? [process.env.CLIENT_URL.trim()] : [];
+
+  return [...new Set([...(fromList || []), ...fromSingle, ...defaults])];
+}
+
 const env = {
   port: Number(process.env.PORT || 5000),
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  clientOrigins: parseClientOrigins(),
 
   jwtSecret: process.env.JWT_SECRET,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,

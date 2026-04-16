@@ -7,6 +7,7 @@ function getApiError(error) {
     const fields = Object.values(error.response.data.errors).flat().filter(Boolean);
     if (fields.length) return fields.join(' ');
   }
+  if (!error?.response) return 'Cannot reach backend. Check API server on http://localhost:5000.';
   return error?.response?.data?.message || 'Registration failed';
 }
 
