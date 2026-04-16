@@ -97,7 +97,16 @@ router.post('/team', requireRole('admin'), async (req, res) => {
   if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
   const { workScheduleId, ...data } = parsed.data;
   const passwordHash = await bcrypt.hash(data.password, 10);
-  const user = await prisma.user.create({ data: { ...data, passwordHash, companyId: req.user.companyId } });
+  const user = await prisma.user.create({
+    data: {
+      companyId: req.user.companyId,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      timezone: data.timezone,
+      password: passwordHash,
+    },
+  });
   if (workScheduleId) {
     await prisma.userWorkScheduleAssignment.create({ data: { userId: user.id, workScheduleId, startsOn: new Date() } });
   }

@@ -2,17 +2,25 @@ import { useCallback } from 'react';
 import api from '../api/client';
 import { useAuthStore } from '../context/authStore';
 
+function normalizeAuthPayload(data) {
+  return {
+    user: data.user,
+    accessToken: data.accessToken || data.token,
+    refreshToken: data.refreshToken,
+  };
+}
+
 export function useAuth() {
   const store = useAuthStore();
 
   const login = async (payload) => {
     const { data } = await api.post('/auth/login', payload);
-    store.setAuth(data);
+    store.setAuth(normalizeAuthPayload(data));
   };
 
   const register = async (payload) => {
     const { data } = await api.post('/auth/register', payload);
-    store.setAuth(data);
+    store.setAuth(normalizeAuthPayload(data));
   };
 
   const logout = async () => {
