@@ -11,6 +11,12 @@ const router = Router();
 router.use(requireAuth);
 
 const dayMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const defaultTimeOffTypes = [
+  { name: 'Casual Leave', color: '#4f46e5', isPaid: true },
+  { name: 'Sick Leave', color: '#ef4444', isPaid: true },
+  { name: 'Paid Leave', color: '#22c55e', isPaid: true },
+  { name: 'Unpaid Leave', color: '#6b7280', isPaid: false },
+];
 
 function toBigIntSafe(value) {
   try {
@@ -53,7 +59,22 @@ function formatScheduleDays(workScheduleDays = []) {
   }));
 }
 
+async function ensureDefaultTimeOffTypes(companyId) {
+  const existing = await prisma.timeOffType.count({ where: { companyId } });
+  if (existing > 0) return;
+
+  await prisma.timeOffType.createMany({
+    data: defaultTimeOffTypes.map((item) => ({
+      companyId,
+      name: item.name,
+      color: item.color,
+      isPaid: item.isPaid,
+    })),
+  });
+}
+
 router.get('/time-off-types', asyncHandler(async (req, res) => {
+  await ensureDefaultTimeOffTypes(req.user.companyId);
   const data = await prisma.timeOffType.findMany({ where: { companyId: req.user.companyId } });
   res.json(data);
 }));

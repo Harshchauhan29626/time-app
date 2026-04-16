@@ -52,7 +52,7 @@ export default function NewTimeOffPage() {
     setError('');
     try {
       await api.post('/time-off-requests', {
-        timeOffTypeId: Number(form.timeOffTypeId),
+        timeOffTypeId: String(form.timeOffTypeId),
         startDate: form.startDate,
         endDate: form.endDate,
         reason: form.reason.trim() || undefined,
