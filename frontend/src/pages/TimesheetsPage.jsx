@@ -54,15 +54,16 @@ export default function TimesheetsPage() {
               {rows.map((r) => {
                 const worked = r.workedMinutes ?? r.totalWorkMinutes ?? 0;
                 const br = r.breakMinutes ?? r.totalBreakMinutes ?? 0;
+                const status = r.status || (r.clockOut ? 'completed' : 'active');
                 return (
                   <tr key={r.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3">{dayjs(r.clockIn).format('YYYY-MM-DD')}</td>
+                    <td className="px-4 py-3">{dayjs(r.date || r.clockIn).format('YYYY-MM-DD')}</td>
                     <td className="px-4 py-3">{dayjs(r.clockIn).format('HH:mm')}</td>
-                    <td className="px-4 py-3">{r.clockOut ? dayjs(r.clockOut).format('HH:mm') : '-'}</td>
+                    <td className="px-4 py-3">{r.clockOut ? dayjs(r.clockOut).format('HH:mm') : 'In progress'}</td>
                     <td className="px-4 py-3">{minutesToHours(worked)}</td>
                     <td className="px-4 py-3">{minutesToHours(br)}</td>
                     <td className="px-4 py-3">{minutesToHours(r.overtimeMinutes)}</td>
-                    <td className="px-4 py-3"><span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 capitalize">{r.status || 'unknown'}</span></td>
+                    <td className="px-4 py-3"><span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 capitalize">{status}</span></td>
                   </tr>
                 );
               })}

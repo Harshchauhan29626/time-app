@@ -11,6 +11,12 @@ const router = Router();
 router.use(requireAuth);
 
 const dayMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const defaultTimeOffTypes = [
+  { name: 'Casual Leave', color: '#4f46e5', isPaid: true },
+  { name: 'Sick Leave', color: '#ef4444', isPaid: true },
+  { name: 'Paid Leave', color: '#22c55e', isPaid: true },
+  { name: 'Unpaid Leave', color: '#6b7280', isPaid: false },
+];
 
 function toBigIntSafe(value) {
   try {
@@ -53,33 +59,65 @@ function formatScheduleDays(workScheduleDays = []) {
   }));
 }
 
+async function ensureDefaultTimeOffTypes(companyId) {
+  const existing = await prisma.timeOffType.count({ where: { companyId } });
+  if (existing > 0) return;
+
+  await prisma.timeOffType.createMany({
+    data: defaultTimeOffTypes.map((item) => ({
+      companyId,
+      name: item.name,
+      color: item.color,
+      isPaid: item.isPaid,
+    })),
+  });
+}
+
 router.get('/time-off-types', asyncHandler(async (req, res) => {
+  await ensureDefaultTimeOffTypes(req.user.companyId);
   const data = await prisma.timeOffType.findMany({ where: { companyId: req.user.companyId } });
   res.json(data);
 }));
 
 router.post('/time-off-requests', asyncHandler(async (req, res) => {
   const schema = z.object({
-    timeOffTypeId: z.string(),
-    startDate: z.string(),
-    endDate: z.string(),
-    reason: z.string().optional(),
+    timeOffTypeId: z.coerce.number().int().positive(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    reason: z.string().trim().max(1000).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const timeOffTypeId = toBigIntSafe(parsed.data.timeOffTypeId);
   if (!timeOffTypeId) return res.status(400).json({ message: 'Invalid time off type' });
+  const startDate = new Date(`${parsed.data.startDate}T00:00:00.000Z`);
+  const endDate = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return res.status(400).json({ message: 'Invalid start or end date' });
+  }
+  if (endDate < startDate) return res.status(400).json({ message: 'End date cannot be before start date' });
+
+  const timeOffType = await prisma.timeOffType.findFirst({
+    where: { id: timeOffTypeId, companyId: req.user.companyId },
+  });
+  if (!timeOffType) return res.status(404).json({ message: 'Time off type not found' });
 
   const created = await prisma.timeOffRequest.create({
     data: {
       companyId: req.user.companyId,
       userId: req.user.id,
       timeOffTypeId,
-      startDate: new Date(parsed.data.startDate),
-      endDate: new Date(parsed.data.endDate),
+      startDate,
+      endDate,
       reason: parsed.data.reason || null,
+      status: 'pending',
+    },
+    include: {
+      timeOffType: { select: { id: true, name: true, color: true } },
+      user: { select: { id: true, name: true, email: true } },
     },
   });
 
@@ -129,12 +167,12 @@ router.post('/work-schedules', requireRole('admin', 'manager'), asyncHandler(asy
     name: z.string().min(1),
     startTime: z.string(),
     endTime: z.string(),
-    breakMinutes: z.coerce.number().default(60),
-    weeklyHours: z.coerce.number().default(40),
+    breakMinutes: z.coerce.number().min(0).default(60),
+    weeklyHours: z.coerce.number().min(0).default(40),
     days: z.array(z.object({ weekday: z.number(), scheduledMinutes: z.number() })).optional(),
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const row = await prisma.workSchedule.create({
     data: {
@@ -151,7 +189,7 @@ router.post('/work-schedules', requireRole('admin', 'manager'), asyncHandler(asy
     include: { workScheduleDays: true },
   });
 
-  res.status(201).json({ ...row, days: formatScheduleDays(row.workScheduleDays) });
+  res.status(201).json({ message: 'Schedule created successfully', data: { ...row, days: formatScheduleDays(row.workScheduleDays) } });
 }));
 
 router.patch('/work-schedules/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
@@ -190,13 +228,13 @@ router.get('/holidays', asyncHandler(async (req, res) => {
 
 router.post('/holidays', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
   const parsed = z.object({
-    name: z.string(),
-    holidayDate: z.string(),
+    name: z.string().trim().min(1),
+    holidayDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     type: z.enum(['public', 'company', 'optional']).default('public'),
-    description: z.string().optional(),
+    description: z.string().trim().max(500).optional(),
   }).safeParse(req.body);
 
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
 
   const row = await prisma.holiday.create({
     data: {
@@ -208,7 +246,7 @@ router.post('/holidays', requireRole('admin', 'manager'), asyncHandler(async (re
     },
   });
 
-  res.status(201).json(row);
+  res.status(201).json({ message: 'Holiday created successfully', data: row });
 }));
 
 router.patch('/holidays/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
@@ -243,15 +281,21 @@ router.get('/team', requireRole('admin', 'manager'), asyncHandler(async (req, re
 
 router.post('/team', requireRole('admin'), asyncHandler(async (req, res) => {
   const parsed = z.object({
-    name: z.string(),
+    name: z.string().trim().min(1),
     email: z.string().email(),
     password: z.string().min(8),
     role: z.enum(['manager', 'employee']),
     timezone: z.string().default('UTC'),
-    workScheduleId: z.string().optional(),
+    workScheduleId: z.union([z.string(), z.number(), z.null()]).optional(),
   }).safeParse(req.body);
 
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
+
+  const existing = await prisma.user.findFirst({
+    where: { email: parsed.data.email },
+    select: { id: true },
+  });
+  if (existing) return res.status(409).json({ message: 'Email already exists' });
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
@@ -266,20 +310,22 @@ router.post('/team', requireRole('admin'), asyncHandler(async (req, res) => {
     },
   });
 
-  if (parsed.data.workScheduleId) {
+  if (parsed.data.workScheduleId !== undefined && parsed.data.workScheduleId !== null && String(parsed.data.workScheduleId).trim() !== '') {
     const workScheduleId = toBigIntSafe(parsed.data.workScheduleId);
-    if (workScheduleId) {
-      await prisma.userWorkScheduleAssignment.create({
-        data: {
-          userId: user.id,
-          workScheduleId,
-          effectiveFrom: dayjs().startOf('day').toDate(),
-        },
-      });
-    }
+    if (!workScheduleId) return res.status(400).json({ message: 'Invalid work schedule' });
+    const schedule = await prisma.workSchedule.findFirst({ where: { id: workScheduleId, companyId: req.user.companyId }, select: { id: true } });
+    if (!schedule) return res.status(400).json({ message: 'Invalid work schedule' });
+
+    await prisma.userWorkScheduleAssignment.create({
+      data: {
+        userId: user.id,
+        workScheduleId,
+        effectiveFrom: dayjs().startOf('day').toDate(),
+      },
+    });
   }
 
-  res.status(201).json(user);
+  res.status(201).json({ message: 'Team member created successfully', data: user });
 }));
 
 router.patch('/team/:id', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {

@@ -20,7 +20,10 @@ export async function requireAuth(req, res, next) {
 
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { company: { select: { timezone: true } } },
+    });
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
     req.user = {
@@ -29,6 +32,8 @@ export async function requireAuth(req, res, next) {
       companyId: user.companyId,
       name: user.name,
       email: user.email,
+      timezone: user.timezone,
+      companyTimezone: user.company?.timezone,
     };
 
     next();

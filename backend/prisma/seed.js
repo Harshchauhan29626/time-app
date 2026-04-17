@@ -96,9 +96,11 @@ async function main() {
     ],
   });
 
-  const [vacationType, sickType] = await Promise.all([
-    prisma.timeOffType.create({ data: { companyId: company.id, name: 'Vacation', color: '#4f46e5', isPaid: true } }),
+  const [casualLeave, sickLeave] = await Promise.all([
+    prisma.timeOffType.create({ data: { companyId: company.id, name: 'Casual Leave', color: '#4f46e5', isPaid: true } }),
     prisma.timeOffType.create({ data: { companyId: company.id, name: 'Sick Leave', color: '#ef4444', isPaid: true } }),
+    prisma.timeOffType.create({ data: { companyId: company.id, name: 'Paid Leave', color: '#22c55e', isPaid: true } }),
+    prisma.timeOffType.create({ data: { companyId: company.id, name: 'Unpaid Leave', color: '#6b7280', isPaid: false } }),
   ]);
 
   await prisma.timeOffRequest.createMany({
@@ -106,7 +108,7 @@ async function main() {
       {
         companyId: company.id,
         userId: employee1.id,
-        timeOffTypeId: vacationType.id,
+        timeOffTypeId: casualLeave.id,
         startDate: dayjs().add(10, 'day').toDate(),
         endDate: dayjs().add(12, 'day').toDate(),
         status: 'approved',
@@ -114,7 +116,7 @@ async function main() {
       {
         companyId: company.id,
         userId: employee2.id,
-        timeOffTypeId: sickType.id,
+        timeOffTypeId: sickLeave.id,
         startDate: dayjs().add(5, 'day').toDate(),
         endDate: dayjs().add(6, 'day').toDate(),
         status: 'pending',

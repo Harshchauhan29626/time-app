@@ -6,6 +6,7 @@ import meRoutes from './routes/meRoutes.js';
 import timeRoutes from './routes/timeRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import adminTimeOffRoutes from './routes/adminTimeOffRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { serializeBigInt } from './utils/serialize.js';
 import { env } from './config/env.js';
@@ -43,6 +44,7 @@ app.use('/api', meRoutes);
 app.use('/api', timeRoutes);
 app.use('/api', dashboardRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', adminTimeOffRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
